@@ -25,10 +25,10 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#define WIFI_USERNAME   "100.000USDorLoser" /*"REPLACE YOUR WIFI USER NAME HERE"*/
-#define WIFI_PASSWORD   "huylong1999"/* "REPLACE YOUR WIFI PASSWORD HERE" */
-#define FIREBASE_HOST   "https://loraesp32vippro-default-rtdb.firebaseio.com/" /* "REPLACE YOUR FIREBASE HOST NAME HERE" */
-#define FIREBASE_AUTH   "cYhdV1RqRExQSAt0TcHgd8L2WCDyIHc3vnxEgIBd"  /* "REPLACE YOUR FIREBASE SECRET HERE" */
+#define WIFI_USERNAME   /*"REPLACE YOUR WIFI USER NAME HERE"*/
+#define WIFI_PASSWORD   /* "REPLACE YOUR WIFI PASSWORD HERE" */
+#define FIREBASE_HOST   /* "REPLACE YOUR FIREBASE HOST NAME HERE" */
+#define FIREBASE_AUTH   /* "REPLACE YOUR FIREBASE SECRET HERE" */
 /* defines the pins used by the tranceiver module */
 #define PIN_SCK         18
 #define PIN_MISO        19
@@ -323,14 +323,14 @@ void lcd_setup(){
 
     byte degree[8]= {
 
-        B00011,
-        B00011,
-        B00000,
-        B01111,
+        B11000,
+        B11000,
+        B01110,
+        B10001,
         B10000,
         B10000,
-        B10000,
-        B01111,
+        B10001,
+        B01110,
     }; lcd.createChar(3, degree);
 
     lcd.backlight();
