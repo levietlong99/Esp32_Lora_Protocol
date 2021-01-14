@@ -1,6 +1,8 @@
 # Esp32_Lora_Protocol
 Using Esp32 to connect to firebase and using Lora protocol  
 
+![LoRa-ESP32-thumbnail-1](https://user-images.githubusercontent.com/75990061/104584346-0a6d8e80-5695-11eb-8f85-0be6289d881f.jpg)
+
 ## About this project  
 * Do interesting things with NODE-MCU board is awesome, right? Control every thing in your house with an app connect with WIFI, and you got ***Smart Home***.  
 * But ... when you need to control something outside your house, this will be hard. WIFI is a very high band wave that can bring so much data, so you can watch video, download games,..But because of it, WIFI cannot go far. Something need to be control and far from you a little bit, like farm, garden, or may be a light bulb outside in mid night for  fear of ghosts people ....
