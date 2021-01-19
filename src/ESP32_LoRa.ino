@@ -120,7 +120,7 @@ void loop() {
 
         if(is_new_data) {                                               // check GLOBAL bool if new data was completely received
 
-            String sensor_array[5];
+            String sensor_array[3];
             // Serial.println(raw_string);
             /* check if data don't include noise, if not, fill sensor data to sensor_array*/
             if(analyse_sensor_string(sensor_array, raw_string)){
@@ -226,7 +226,7 @@ bool analyse_sensor_string(String *string_array, String raw){
 
     int i = 0;
     int amount_of_sign = 0;
-    while(amount_of_sign < 5){                                          // stop if when found NULL char
+    while(amount_of_sign < 3){                                          // stop if when found NULL char
 
         if(raw[i] == '/'){                                              // this sign was used for divide package
 
@@ -234,7 +234,7 @@ bool analyse_sensor_string(String *string_array, String raw){
             amount_of_sign++;
             continue;
         }
-        /* string format: temperature/humidity/brightness/lpg/co/smoke/ -> 6 sign in format package */
+        /* string format: temperature/humidity/air ppm/ -> 3 sign in format package */
         else{
 
             if(amount_of_sign == 0){                                    // get temperature string
@@ -243,16 +243,10 @@ bool analyse_sensor_string(String *string_array, String raw){
             else if(amount_of_sign == 1){                               // get humidity string
                 string_array[1] += raw[i];
             }
-            else if(amount_of_sign == 2){                               // get LPG density string
+            else if(amount_of_sign == 2){                               // get air quality string
                 string_array[2] += raw[i];
             }
-            else if(amount_of_sign == 3){                               // get  CO density string
-                string_array[3] += raw[i];
-            }
-            else if(amount_of_sign == 4){                               // get  smoke density string
-                string_array[4] += raw[i];
-            }
-            if(i > 50){                                                 // check if string format was not familiar
+            if(i > 30){                                                 // check if string format was not familiar
 
                 return false;
             }
@@ -338,11 +332,9 @@ void lcd_setup(){
     lcd.setCursor(0, 1);    lcd.print("R2:");
     lcd.setCursor(0, 2);    lcd.print("R3:");
     lcd.setCursor(0, 3);    lcd.print("R4:");
-    lcd.setCursor(7, 0);    lcd.write(2); lcd.setCursor(14, 0); lcd.write(3);
-    lcd.setCursor(16, 0);   lcd.write(1); lcd.setCursor(19, 0); lcd.print("%");
-    lcd.setCursor(7, 1);    lcd.print("LPG:  "); lcd.setCursor(17, 1); lcd.print("ppm");
-    lcd.setCursor(7, 2);    lcd.print("CO:  "); lcd.setCursor(17, 2); lcd.print("ppm");
-    lcd.setCursor(7, 3);    lcd.print("SMO: "); lcd.setCursor(17, 3); lcd.print("ppm");
+    lcd.setCursor(7, 0);    lcd.write(2);   lcd.setCursor(14, 0);   lcd.write(3);
+    lcd.setCursor(7, 1);    lcd.write(1);   lcd.setCursor(14, 1);   lcd.print("%");
+    lcd.setCursor(7, 2);    lcd.print("AIR:"); lcd.setCursor(17, 2); lcd.print("ppm");
 }
 
 void lcd_print_relay_state(uint8_t relay_byte){
@@ -382,11 +374,18 @@ void lcd_print_relay_state(uint8_t relay_byte){
 
 void lcd_print_sensor_value(String *sensor_array){
 
-    lcd.setCursor(9, 0);    lcd.print(sensor_array[0].toFloat());         // temperature value
-    lcd.setCursor(17, 0);   lcd.print(sensor_array[1].toInt());         // humidity value
-    lcd.setCursor(11, 1);    lcd.print(sensor_array[2].toInt());        // LPG density value
-    lcd.setCursor(11, 2);    lcd.print(sensor_array[3].toInt());        // CO density value
-    lcd.setCursor(11, 3);    lcd.print(sensor_array[4].toInt());        // SMOKE density value
+    lcd.setCursor(9, 0);    lcd.print(sensor_array[0].toFloat());       // temperature value
+    lcd.setCursor(9, 1);   lcd.print(sensor_array[1].toFloat());        // humidity value
+    lcd.setCursor(11, 2);    lcd.print(sensor_array[2].toFloat());       // air quality value
+    lcd.setCursor(7, 3);
+    if(sensor_array[2].toFloat() < 100){                                // print air status
+
+        lcd.print("Fresh air   ");
+    }
+    else{
+
+        lcd.print("Polluted air");
+    }
 }
 
 void connect_eps32_wifi(){

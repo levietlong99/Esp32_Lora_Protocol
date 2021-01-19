@@ -20,7 +20,6 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <DHT.h>
-#include <MQ2.h>
 
 #define BAND        433E6                                               // Asia - Viet Nam
 #define DEVICE_1    3                                                   // digital pin for controlling delay
@@ -44,7 +43,6 @@ void (* reset_board)(void) = 0;
 
 /* setup library */
 DHT dht(DHT11_PIN, DHT11);                                              // dht(DHTPIN, DHTTYPE)
-MQ2 mq2(SMOKE_PIN);
 
 /* process variable */
 volatile bool  is_time_send = false;
@@ -54,7 +52,6 @@ void setup() {
      // Serial.begin(115200);                                               // debug
     init_lora();
     dht.begin();                                                        // init dht11
-    mq2.begin();                                                        // init mq2 sensor
     pinMode(DEVICE_1, OUTPUT);
     pinMode(DEVICE_2, OUTPUT);
     pinMode(DEVICE_3, OUTPUT);
@@ -127,11 +124,7 @@ void read_and_send_sensor_data_lora(){
     string_send += "/";
     string_send += dht.readHumidity();
     string_send += "/";
-    string_send += mq2.readLPG();
-    string_send += "/";
-    string_send += mq2.readCO();
-    string_send += "/";
-    string_send += mq2.readSmoke();
+    string_send += analogRead(SMOKE_PIN) * 0.25;
     string_send += "/";
     // Serial.println(string_send);                                     // debug
     LoRa.beginPacket();
