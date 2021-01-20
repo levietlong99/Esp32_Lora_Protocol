@@ -25,10 +25,10 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#define WIFI_USERNAME   "100.000USDorLoser"
-#define WIFI_PASSWORD   "huylong1999"
-#define FIREBASE_HOST   "https://loraesp32vippro-default-rtdb.firebaseio.com/"
-#define FIREBASE_AUTH   "cYhdV1RqRExQSAt0TcHgd8L2WCDyIHc3vnxEgIBd"
+#define WIFI_USERNAME   ""
+#define WIFI_PASSWORD   ""
+#define FIREBASE_HOST   ""
+#define FIREBASE_AUTH   ""
 /* defines the pins used by the tranceiver module */
 #define PIN_SCK         18
 #define PIN_MISO        19
@@ -334,7 +334,8 @@ void lcd_setup(){
     lcd.setCursor(0, 3);    lcd.print("R4:");
     lcd.setCursor(7, 0);    lcd.write(2);   lcd.setCursor(14, 0);   lcd.write(3);
     lcd.setCursor(7, 1);    lcd.write(1);   lcd.setCursor(14, 1);   lcd.print("%");
-    lcd.setCursor(7, 2);    lcd.print("GAS:");
+    lcd.setCursor(7, 2);    lcd.print("GAS:"); lcd.setCursor(17, 2); lcd.print("ppm");
+
 }
 
 void lcd_print_relay_state(uint8_t relay_byte){
