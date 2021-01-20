@@ -25,10 +25,10 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#define WIFI_USERNAME   /*"REPLACE YOUR WIFI USER NAME HERE"*/
-#define WIFI_PASSWORD   /* "REPLACE YOUR WIFI PASSWORD HERE" */
-#define FIREBASE_HOST   /* "REPLACE YOUR FIREBASE HOST NAME HERE" */
-#define FIREBASE_AUTH   /* "REPLACE YOUR FIREBASE SECRET HERE" */
+#define WIFI_USERNAME   "100.000USDorLoser"
+#define WIFI_PASSWORD   "huylong1999"
+#define FIREBASE_HOST   "https://loraesp32vippro-default-rtdb.firebaseio.com/"
+#define FIREBASE_AUTH   "cYhdV1RqRExQSAt0TcHgd8L2WCDyIHc3vnxEgIBd"
 /* defines the pins used by the tranceiver module */
 #define PIN_SCK         18
 #define PIN_MISO        19
@@ -37,8 +37,8 @@
 #define PIN_RST         14
 #define PIN_DI0         26                                              // in my experience, this's the best interrupt pin on ESP32
 
-#define firebase_sensor_path     "/sensor_string"
-#define firebase_controller_path "/controller_byte"
+#define firebase_sensor_path     "/path_2/sensor"
+#define firebase_controller_path "/path_1/control"
 
 #define RF_BAND         433E6                                           // Asia - Viet Nam
 
@@ -133,7 +133,7 @@ void loop() {
                 else{                                                   // push data to firebase failed
 
                     // Serial.println(fbdo.errorReason());              // Uncomment this line to know reason why push data fail
-                    ESP.restart();
+                    return;
                 }
             }
             is_new_data = false;                                        // announce: new data was read
@@ -143,14 +143,14 @@ void loop() {
         /* GET DATA FROM FIREBASE AND SEND IT TO NODE THROUGH LORA********************************/
 
         // get and send data every 1 seconds (700ms wait + 300ms get data from firebase)
-        else if(wait_for(700)){
+        else if(wait_for(800)){
 
             /* return TRUE if get data successed, and data will be stored in database(fbdo) */
-            if(Firebase.getInt(fbdo, firebase_controller_path)){
+            if(Firebase.getString(fbdo, firebase_controller_path)){
 
-                uint8_t control_data = fbdo.intData();                  // get data from database
+                String control_data = fbdo.stringData();                           // get data from database
                 /* analyse control_data, return false if data was not available */
-                if(analyse_control_data(control_data, &relay_state)){
+                if(analyse_control_data(control_data.toInt(), &relay_state)){
 
                     send_byte_lora(relay_state);                        // send new relay state to Node
                     // Serial.println(relay_state);
@@ -167,7 +167,7 @@ void loop() {
             else{                                                       // get data failed
 
                 // Serial.println(fbdo.errorReason());                  // Uncomment this line to know reason get data fail
-                ESP.restart();
+                return;
             }
         }
     }
@@ -228,7 +228,7 @@ bool analyse_sensor_string(String *string_array, String raw){
     int amount_of_sign = 0;
     while(amount_of_sign < 3){                                          // stop if when found NULL char
 
-        if(raw[i] == '/'){                                              // this sign was used for divide package
+        if(raw[i] == '*'){                                              // this star sign was used for divide package
 
             i++;
             amount_of_sign++;
@@ -243,7 +243,7 @@ bool analyse_sensor_string(String *string_array, String raw){
             else if(amount_of_sign == 1){                               // get humidity string
                 string_array[1] += raw[i];
             }
-            else if(amount_of_sign == 2){                               // get air quality string
+            else if(amount_of_sign == 2){                               // get gas density string
                 string_array[2] += raw[i];
             }
             if(i > 30){                                                 // check if string format was not familiar
@@ -334,7 +334,7 @@ void lcd_setup(){
     lcd.setCursor(0, 3);    lcd.print("R4:");
     lcd.setCursor(7, 0);    lcd.write(2);   lcd.setCursor(14, 0);   lcd.write(3);
     lcd.setCursor(7, 1);    lcd.write(1);   lcd.setCursor(14, 1);   lcd.print("%");
-    lcd.setCursor(7, 2);    lcd.print("AIR:"); lcd.setCursor(17, 2); lcd.print("ppm");
+    lcd.setCursor(7, 2);    lcd.print("GAS:");
 }
 
 void lcd_print_relay_state(uint8_t relay_byte){
@@ -378,13 +378,14 @@ void lcd_print_sensor_value(String *sensor_array){
     lcd.setCursor(9, 1);   lcd.print(sensor_array[1].toFloat());        // humidity value
     lcd.setCursor(11, 2);    lcd.print(sensor_array[2].toFloat());       // air quality value
     lcd.setCursor(7, 3);
-    if(sensor_array[2].toFloat() < 100){                                // print air status
+    if(sensor_array[2].toFloat() < 300){                                // print air status
 
         lcd.print("Fresh air   ");
     }
     else{
 
-        lcd.print("Polluted air");
+        lcd.print("Detected GAS");
+        lcd.setCursor(17, 2); lcd.print("ppm");                         // value too big so lcd break "ppm" word
     }
 }
 

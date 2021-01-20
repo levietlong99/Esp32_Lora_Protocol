@@ -7,7 +7,6 @@
     - Using timer interrupt on atmega328, so missing data is reduced at least!!
     - Good arrange process for transmit and receive, so process is very sepreate.
     - High speed response, 1 seconds and relay under your controller.
-    - Read 7 invidual sensor values at a time, and sends back stability!
     - Safe? but we still prepared in case bad circumstance happended.
 
     #NOTICE
@@ -20,45 +19,60 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <DHT.h>
+#include <MQUnifiedsensor.h>
+
 
 #define BAND        433E6                                               // Asia - Viet Nam
-#define DEVICE_1    3                                                   // digital pin for controlling delay
-#define DEVICE_2    4
-#define DEVICE_3    5
-#define DEVICE_4    6
+#define DEVICE_1    5                                                   // digital pin for controlling delay
+#define DEVICE_2    3
+#define DEVICE_3    4
+#define DEVICE_4    8
 
 #define FIRST_BIT   0x01
 #define SECOND_BIT  0x02
 #define THIRD_BIT   0x04
 #define FOURTH_BIT  0x08
 
-#define SMOKE_PIN   A1                                                  // using smoke sensor (MQ2)
+#define GAS_PIN     A1                                                  // using gas sensor (MQ135)
 #define DHT11_PIN   A0                                                  // using temperature and humidity sensor
 
 void init_lora();
 void read_and_send_sensor_data_lora();
 bool wait_for(unsigned long interval);
 void setup_timer_interrupt_4s();
+float calibrate_NH4_density();
+void init_gas_sensor();
+
 void (* reset_board)(void) = 0;
 
 /* setup library */
 DHT dht(DHT11_PIN, DHT11);                                              // dht(DHTPIN, DHTTYPE)
+// MQUnifiedsensor ...(board name, Voltage_Resolution, ADC_Bit_Resolution, pin, type)
+MQUnifiedsensor MQ135("Arduino UNO", 5, 10, GAS_PIN, "MQ-135");         // init MQ135
+
 
 /* process variable */
 volatile bool  is_time_send = false;
 
 void setup() {
 
-     // Serial.begin(115200);                                               // debug
-    init_lora();
-    dht.begin();                                                        // init dht11
-    pinMode(DEVICE_1, OUTPUT);
-    pinMode(DEVICE_2, OUTPUT);
-    pinMode(DEVICE_3, OUTPUT);
-    pinMode(DEVICE_4, OUTPUT);
-    pinMode(SMOKE_PIN, INPUT);
-    pinMode(DHT11_PIN, INPUT);
-    setup_timer1_interrupt_4s();
+     // Serial.begin(115200);                                           // debug
+     pinMode(DEVICE_1, OUTPUT);
+     pinMode(DEVICE_2, OUTPUT);
+     pinMode(DEVICE_3, OUTPUT);
+     pinMode(DEVICE_4, OUTPUT);
+     pinMode(GAS_PIN, INPUT);
+     pinMode(DHT11_PIN, INPUT);
+     digitalWrite(DEVICE_1, HIGH);                                      // Using relay trigger low (1 - LOW, 0 - HIGH)
+     digitalWrite(DEVICE_2, HIGH);
+     digitalWrite(DEVICE_3, HIGH);
+     digitalWrite(DEVICE_4, HIGH);
+
+     dht.begin();                                                       // init dht11
+     init_gas_sensor();
+     delay(1000);
+     setup_timer1_interrupt_4s();
+     init_lora();
 }
 
 void loop() {
@@ -73,12 +87,13 @@ void loop() {
         }
         /* control 4 relays , 4 LSB of receive byte is relay state */
         uint8_t data_receive = string_receive.toInt();                  // String type to Int type
+        data_receive = ~data_receive & 0x0F;                            // flipping bit and clear 4 MSB (Using relay trigger low)
         digitalWrite(DEVICE_1, data_receive & FIRST_BIT);
         digitalWrite(DEVICE_2, data_receive & SECOND_BIT);
         digitalWrite(DEVICE_3, data_receive & THIRD_BIT);
         digitalWrite(DEVICE_4, data_receive & FOURTH_BIT);
-         // Serial.println(string_receive);                                 // debug
-        while(is_time_send){                                            // time to send data
+         // Serial.println(string_receive);
+        while(is_time_send && !wait_for(100)){                          // time to send data (only send within 10ms)
 
             LoRa.idle();                                                // put LoRa to concentrate mode (important)
             read_and_send_sensor_data_lora();                           // send sensor data
@@ -121,11 +136,11 @@ void read_and_send_sensor_data_lora(){
     String string_send = "";
     /* add sensor value to string */
     string_send += dht.readTemperature();
-    string_send += "/";
+    string_send += "*";
     string_send += dht.readHumidity();
-    string_send += "/";
-    string_send += analogRead(SMOKE_PIN) * 0.25;
-    string_send += "/";
+    string_send += "*";
+    string_send += calibrate_NH4_density();
+    string_send += "*";
     // Serial.println(string_send);                                     // debug
     LoRa.beginPacket();
     LoRa.print(string_send);                                            // LoRa.print(String_type)
@@ -166,4 +181,42 @@ void setup_timer1_interrupt_4s(){
     // enable timer compare interrupt
     TIMSK1 |= (1 << OCIE1A);
     sei();                                                              // allow interrupt
+}
+
+void init_gas_sensor(){
+
+    //Set math model to calculate the PPM concentration and the value of constants
+    MQ135.setRegressionMethod(1);
+    MQ135.init();
+    /*****************************  MQ CAlibration ********************************************/
+    // Explanation:
+    // In this routine the sensor will measure the resistance of the sensor supposing before was pre-heated
+    // and now is on clean air (Calibration conditions), and it will setup R0 value.
+    // We recomend execute this routine only on setup or on the laboratory and save on the eeprom of your arduino
+    // This routine not need to execute to every restart, you can load your R0 if you know the value
+    float calcR0 = 0;
+    for(int i = 1; i <= 10; i++){
+
+          MQ135.update(); // Update data, the arduino will be read the voltage on the analog pin
+          calcR0 += MQ135.calibrate(3.6);
+    }
+    MQ135.setR0(calcR0/10);
+    /*
+            Exponential regression:
+            GAS      | a      | b
+            CO       | 605.18 | -3.937
+            Alcohol  | 77.255 | -3.18
+            CO2      | 110.47 | -2.862
+            Tolueno  | 44.947 | -3.445
+            NH4      | 102.2  | -2.473
+            Acetona  | 34.668 | -3.369
+    */
+    MQ135.setA(102.2);                                                  // Calibrate NH4 density
+    MQ135.setB(-2.473);
+}
+
+float calibrate_NH4_density(){
+
+    MQ135.update();                                                     // read data from SMOKE_PIN
+    return MQ135.readSensor();
 }
