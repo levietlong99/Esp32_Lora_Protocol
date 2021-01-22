@@ -45,6 +45,7 @@ void init_gas_sensor();
 
 void (* reset_board)(void) = 0;
 
+
 /* setup library */
 DHT dht(DHT11_PIN, DHT11);                                              // dht(DHTPIN, DHTTYPE)
 // MQUnifiedsensor ...(board name, Voltage_Resolution, ADC_Bit_Resolution, pin, type)
@@ -127,7 +128,7 @@ ISR(TIMER1_COMPA_vect){                                                 // inter
 void init_lora(){
 
     if (!LoRa.begin(BAND)){
-        while (1);
+        wait_for(1000)
     }
 }
 
