@@ -1,3 +1,4 @@
+
 /*
    #PROJECT: Using esp32 to communicate with firebase, communicate with Arduino Uno through RF (LoRa module).
 
@@ -27,8 +28,8 @@
 
 #define WIFI_USERNAME   "100.000USDorLoser"
 #define WIFI_PASSWORD   "huylong1999"
-#define FIREBASE_HOST   "https://esp32-12371-default-rtdb.firebaseio.com/"
-#define FIREBASE_AUTH   ""
+#define FIREBASE_HOST   "https://loraesp32vippro-default-rtdb.firebaseio.com/"
+#define FIREBASE_AUTH   "cYhdV1RqRExQSAt0TcHgd8L2WCDyIHc3vnxEgIBd"
 /* defines the pins used by the tranceiver module */
 #define PIN_SCK         18
 #define PIN_MISO        19
@@ -66,6 +67,7 @@ void lcd_print_sensor_value(String *sensor_array);
 bool analyse_control_data(uint8_t control_byte, uint8_t *state_byte);
 bool analyse_sensor_string(String *string_array, String raw);
 bool wait_for(unsigned long interval);
+bool wait_for_door(unsigned long interval);
 
 /* Define FirebaseESP32 data object for data sending and receiving */
 FirebaseData fbdo;
@@ -76,6 +78,7 @@ volatile bool is_new_data = false;                                      // annou
 volatile bool is_receive_interrupt{false};                              // announce: receive interrupt has occured
 String raw_string = "";                                                 // string was  used for storing receive data
 uint8_t relay_state = 0;                                                // store relay state
+bool is_door_open = false;
 
 
 void setup() {
@@ -85,7 +88,7 @@ void setup() {
     connect_eps32_wifi();
 
     EEPROM.begin(EEPROM_SIZE);                                          // get relays's state from EEPROM
-    relay_state = (EEPROM.read(EEPROM_ADDRESS)) & 0b00001111;
+    relay_state = (EEPROM.read(EEPROM_ADDRESS)) & 0x1F;
     init_lora();
     lcd_setup();
     Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
@@ -93,7 +96,8 @@ void setup() {
     // LoRa.setSyncWord(0xF3);
 
     Firebase.reconnectWiFi(true);                                       // enable auto reconnect the WiFi when connection lost
-
+    lcd_print_relay_state(relay_state);
+    send_byte_lora(relay_state);                                        // send new relay state to Node
     /* Syntax to creat loop on another core , run paralell with main loop */
     xTaskCreatePinnedToCore(
 
@@ -151,17 +155,31 @@ void loop() {
 
                 String control_data = fbdo.stringData();                           // get data from database
                 /* analyse control_data, return false if data was not available */
-                if(analyse_control_data(control_data.toInt(), &relay_state)){
+                if((analyse_control_data(control_data.toInt(), &relay_state))){
 
                     send_byte_lora(relay_state);                        // send new relay state to Node
+                    if(Firebase.setString(fbdo, FIREBASE_STATUS_PATH, String(relay_state)));
                     // Serial.println(relay_state);
-                    LoRa.receive();                                     // send completed, renable receive mode
                     lcd_print_relay_state(relay_state);
+                    LoRa.receive();                                     // send completed, renable receive mode
                     EEPROM.write(EEPROM_ADDRESS, relay_state);            // saved relay state
                     EEPROM.commit();
                 }
                 else{                                                   // data format is not available
 
+                    if(is_door_open){
+
+                        if(wait_for_door(2000)){
+
+                            lcd.setCursor(13, 3);
+                            lcd.print("CLOSE");
+                            is_door_open = false;
+                            if(Firebase.setString(fbdo, FIREBASE_CONTROL_PATH, "50")){
+
+                                return;
+                            }
+                        }
+                    }
                     return;
                 }
             }
@@ -205,7 +223,8 @@ bool analyse_control_data(uint8_t control_byte, uint8_t *state_byte){
         example: 41 mean user want to turn on fourth relay */
     uint8_t tenths = control_byte / 10;
     uint8_t units = control_byte % 10;
-    if(tenths > 4 || tenths < 1 || (units != 0 && units != 1)){
+    uint8_t temp = *state_byte;
+    if(tenths > 5 || tenths < 1 || (units != 0 && units != 1)){
 
         return false;                                                   // format data is not familiar
     }
@@ -213,13 +232,21 @@ bool analyse_control_data(uint8_t control_byte, uint8_t *state_byte){
 
         if(units == 1){
 
-            *state_byte |= (0x01 << (tenths - 1));                      // set relay bit to 1
+            temp |= (0x01 << (tenths - 1));                      // set relay bit to 1
         }
         else if(units == 0){
 
-            *state_byte &= ~(0x01 << (tenths - 1));                     // clear relay bit
+            temp &= ~(0x01 << (tenths - 1));                     // clear relay bit
         }
+    }
+    if(temp != *state_byte){
+
+        *state_byte = temp;
         return true;
+    }
+    else{
+
+        return false;
     }
 }
 
@@ -315,6 +342,7 @@ void lcd_setup(){
     lcd.setCursor(7, 0);    lcd.write(2);   lcd.setCursor(14, 0);   lcd.write(3);
     lcd.setCursor(7, 1);    lcd.write(1);   lcd.setCursor(14, 1);   lcd.print("%");
     lcd.setCursor(7, 2);    lcd.print("GAS:"); lcd.setCursor(17, 2); lcd.print("ppm");
+    lcd.setCursor(7, 3);    lcd.print("DOOR: ");
 
 }
 
@@ -351,23 +379,20 @@ void lcd_print_relay_state(uint8_t relay_byte){
     else{
         lcd.print("OFF");
     }
+    lcd.setCursor(13, 3);
+    if(((relay_byte & 0x10) != 0x00) && !is_door_open){
+
+        lcd.print("OPEN ");
+        is_door_open = true;
+    }
 }
 
 void lcd_print_sensor_value(String *sensor_array){
 
-    lcd.setCursor(9, 0);    lcd.print(sensor_array[0].toFloat());       // temperature value
-    lcd.setCursor(9, 1);   lcd.print(sensor_array[1].toFloat());        // humidity value
-    lcd.setCursor(11, 2);    lcd.print(sensor_array[2].toFloat());       // air quality value
-    lcd.setCursor(7, 3);
-    if(sensor_array[2].toFloat() < 300){                                // print air status
-
-        lcd.print("Fresh air   ");
-    }
-    else{
-
-        lcd.print("Detected GAS");
-        lcd.setCursor(17, 2); lcd.print("ppm");                         // value too big so lcd break "ppm" word
-    }
+    lcd.setCursor(9, 0);        lcd.print(sensor_array[0].toFloat());   // temperature value
+    lcd.setCursor(9, 1);        lcd.print(sensor_array[1].toFloat());   // humidity value
+    lcd.setCursor(11, 2);       lcd.print(sensor_array[2].toFloat());   // air quality value
+    lcd.setCursor(17, 2);       lcd.print("ppm");
 }
 
 void connect_eps32_wifi(){
@@ -380,6 +405,26 @@ void connect_eps32_wifi(){
 }
 
 bool wait_for(unsigned long interval){                                  // wait for a time (you can do other work)
+
+    static bool is_enabled_timing = false;
+    /* in fact, millis function run over and over, so we need to keep this static to mark your start time */
+    static unsigned long previous_millis = 0;
+    unsigned long current_millis = millis();
+    if(!is_enabled_timing){                                             // check if timer was start to timing before?
+
+        is_enabled_timing = true;
+        previous_millis = current_millis;                               // if yes, set previous millis and start couting
+    }
+    if(current_millis - previous_millis >= interval)                    // check if timing reached limit
+    {
+
+        is_enabled_timing = false;                                      // stop using timer
+        return true;
+    }
+    return false;
+}
+
+bool wait_for_door(unsigned long interval){                                  // wait for a time (you can do other work)
 
     static bool is_enabled_timing = false;
     /* in fact, millis function run over and over, so we need to keep this static to mark your start time */

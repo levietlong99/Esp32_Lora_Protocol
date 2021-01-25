@@ -20,6 +20,7 @@
 #include <LoRa.h>
 #include <DHT.h>
 #include <MQUnifiedsensor.h>
+#include <Servo.h>
 
 
 #define BAND        433E6                                               // Asia - Viet Nam
@@ -27,11 +28,13 @@
 #define DEVICE_2    3
 #define DEVICE_3    4
 #define DEVICE_4    8
+#define SERVO_PIN   6                                                   // control door
 
 #define FIRST_BIT   0x01
 #define SECOND_BIT  0x02
 #define THIRD_BIT   0x04
 #define FOURTH_BIT  0x08
+#define FIFTH_BIT   0x10
 
 #define GAS_PIN     A1                                                  // using gas sensor (MQ135)
 #define DHT11_PIN   A0                                                  // using temperature and humidity sensor
@@ -39,7 +42,8 @@
 void init_lora();
 void read_and_send_sensor_data_lora();
 bool wait_for(unsigned long interval);
-void setup_timer_interrupt_4s();
+bool wait_for_send(unsigned long interval);
+// void setup_timer_interrupt_4s();
 float calibrate_NH4_density();
 void init_gas_sensor();
 
@@ -50,14 +54,16 @@ void (* reset_board)(void) = 0;
 DHT dht(DHT11_PIN, DHT11);                                              // dht(DHTPIN, DHTTYPE)
 // MQUnifiedsensor ...(board name, Voltage_Resolution, ADC_Bit_Resolution, pin, type)
 MQUnifiedsensor MQ135("Arduino UNO", 5, 10, GAS_PIN, "MQ-135");         // init MQ135
+Servo Servo1;                                                           // init servo
 
 
 /* process variable */
 volatile bool  is_time_send = false;
+volatile bool  is_door_open = false;
 
 void setup() {
 
-     // Serial.begin(115200);                                           // debug
+//     Serial.begin(115200);                                           // debug
      pinMode(DEVICE_1, OUTPUT);
      pinMode(DEVICE_2, OUTPUT);
      pinMode(DEVICE_3, OUTPUT);
@@ -72,8 +78,10 @@ void setup() {
      dht.begin();                                                       // init dht11
      init_gas_sensor();
      delay(1000);
-     setup_timer1_interrupt_4s();
+     // setup_timer1_interrupt_4s();
      init_lora();
+     Servo1.attach(SERVO_PIN);
+     Servo1.write(0);
 }
 
 void loop() {
@@ -86,44 +94,62 @@ void loop() {
 
                 string_receive += LoRa.readString();                    // LoRa read return int type
         }
-        /* control 4 relays , 4 LSB of receive byte is relay state */
-        uint8_t data_receive = string_receive.toInt();                  // String type to Int type
-        data_receive = ~data_receive & 0x0F;                            // flipping bit and clear 4 MSB (Using relay trigger low)
-        digitalWrite(DEVICE_1, data_receive & FIRST_BIT);
-        digitalWrite(DEVICE_2, data_receive & SECOND_BIT);
-        digitalWrite(DEVICE_3, data_receive & THIRD_BIT);
-        digitalWrite(DEVICE_4, data_receive & FOURTH_BIT);
-         // Serial.println(string_receive);
-        while(is_time_send && !wait_for(100)){                          // time to send data (only send within 10ms)
+        /* control 4 relays and 1 servo, 4 LSB of receive byte is relay state */
+        uint8_t data_receive = string_receive.toInt() & 0x1F;                  // String type to Int type
+        digitalWrite(DEVICE_1, ~data_receive & FIRST_BIT);
+        digitalWrite(DEVICE_2, ~data_receive & SECOND_BIT);
+        digitalWrite(DEVICE_3, ~data_receive & THIRD_BIT);
+        digitalWrite(DEVICE_4, ~data_receive & FOURTH_BIT);
+        if((data_receive & 0x10) != 0x00){
 
-            LoRa.idle();                                                // put LoRa to concentrate mode (important)
-            read_and_send_sensor_data_lora();                           // send sensor data
-            is_time_send = false;
-            delay(100);                                                 // very important time for change mode
-            LoRa.receive();
+//            Serial.println(data_receive & 0x10);
+            is_door_open = true;
+            Servo1.write(150);
         }
+            Serial.println(string_receive);
+
     }
+    if(is_time_send){                                                    // time to send data (only send within 10ms)
+
+       LoRa.idle();                                                     // put LoRa to concentrate mode (important)
+       read_and_send_sensor_data_lora();                                // send sensor data
+       is_time_send = false;
+       delay(100);                                                      // very important time for change mode
+       LoRa.receive();
+   }
+   if(is_door_open){
+
+       if(wait_for(3000)){
+
+           Servo1.write(0);
+           is_door_open = false;
+       }
+   }
+   if(wait_for_send(4000)){
+
+       is_time_send = true;
+   }
 }
 
-/* remember to keep interrupt so short as possible */
-ISR(TIMER1_COMPA_vect){                                                 // interrupt function for timer1
-
-    volatile  static uint8_t non_send_times = 0;                        // for bad circumstance
-    if(non_send_times > 10){
-
-        // Serial.println("RESET");
-        reset_board();
-    }
-    else if(is_time_send == true){
-
-        non_send_times++;
-    }
-    else{
-
-        non_send_times = 0;
-        is_time_send = true;                                            // every 4s, got this TRUE
-    }
-}
+// /* remember to keep interrupt so short as possible */
+// ISR(TIMER1_COMPA_vect){                                                 // interrupt function for timer1
+//
+//     volatile  static uint8_t non_send_times = 0;                        // for bad circumstance
+//     if(non_send_times > 10){
+//
+//         // Serial.println("RESET");
+//         reset_board();
+//     }
+//     else if(is_time_send == true){
+//
+//         non_send_times++;
+//     }
+//     else{
+//
+//         non_send_times = 0;
+//         is_time_send = true;                                            // every 4s, got this TRUE
+//     }
+// }
 
 void init_lora(){
 
@@ -178,22 +204,40 @@ bool wait_for(unsigned long interval){                                  // wait 
     return false;
 }
 
-void setup_timer1_interrupt_4s(){
+bool wait_for_send(unsigned long interval){                                  // wait for a time (using timer)
 
-    /* fix register on atmega328a -pu */
-    TCCR1A = 0;                                                         // set entire TCCR1A register to 0
-    TCCR1B = 0;                                                         // same for TCCR1B
-    TCNT1  = 0;                                                         //initialize counter value to 0
-    // set compare match register for 0.25 hz increments
-    OCR1A = 65535;                                                      // = (16*4*10^6) / (1*1024) - 1 (must be <65536)
-    // turn on CTC mode
-    TCCR1B |= (1 << WGM12);
-    // Set CS10 and CS12 bits for 1024 prescaler
-    TCCR1B |= (1 << CS12) | (1 << CS10);
-    // enable timer compare interrupt
-    TIMSK1 |= (1 << OCIE1A);
-    sei();                                                              // allow interrupt
+    static bool is_first_time = true;
+    static unsigned long previous_millis = 0;
+    unsigned long current_millis = millis();
+    if(is_first_time){
+        is_first_time = false;
+        /* in case of running for the first time, set previous millis */
+        previous_millis = current_millis;
+    }
+    if(current_millis - previous_millis >= interval)
+    {
+        /* reset first time identify bool for next usage */
+        is_first_time = true;
+        return true;
+    }
+    return false;
 }
+// void setup_timer1_interrupt_4s(){
+//
+//     /* fix register on atmega328a -pu */
+//     TCCR1A = 0;                                                         // set entire TCCR1A register to 0
+//     TCCR1B = 0;                                                         // same for TCCR1B
+//     TCNT1  = 0;                                                         //initialize counter value to 0
+//     // set compare match register for 0.25 hz increments
+//     OCR1A = 65535;                                                      // = (16*4*10^6) / (1*1024) - 1 (must be <65536)
+//     // turn on CTC mode
+//     TCCR1B |= (1 << WGM12);
+//     // Set CS10 and CS12 bits for 1024 prescaler
+//     TCCR1B |= (1 << CS12) | (1 << CS10);
+//     // enable timer compare interrupt
+//     TIMSK1 |= (1 << OCIE1A);
+//     sei();                                                              // allow interrupt
+// }
 
 void init_gas_sensor(){
 
