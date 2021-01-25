@@ -25,9 +25,9 @@
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 
-#define WIFI_USERNAME   ""
-#define WIFI_PASSWORD   ""
-#define FIREBASE_HOST   ""
+#define WIFI_USERNAME   "100.000USDorLoser"
+#define WIFI_PASSWORD   "huylong1999"
+#define FIREBASE_HOST   "https://esp32-12371-default-rtdb.firebaseio.com/"
 #define FIREBASE_AUTH   ""
 /* defines the pins used by the tranceiver module */
 #define PIN_SCK         18
@@ -37,8 +37,9 @@
 #define PIN_RST         14
 #define PIN_DI0         26                                              // in my experience, this's the best interrupt pin on ESP32
 
-#define firebase_sensor_path     "/path_2/sensor"
-#define firebase_controller_path "/path_1/control"
+#define FIREBASE_SENSOR_PATH     "/path_2/sensor"
+#define FIREBASE_CONTROL_PATH "/path_1/control"
+#define FIREBASE_STATUS_PATH     "/path_3/control_status"
 
 #define RF_BAND         433E6                                           // Asia - Viet Nam
 
@@ -66,7 +67,7 @@ bool analyse_control_data(uint8_t control_byte, uint8_t *state_byte);
 bool analyse_sensor_string(String *string_array, String raw);
 bool wait_for(unsigned long interval);
 
-/* Define FirebaseESP8266 data object for data sending and receiving */
+/* Define FirebaseESP32 data object for data sending and receiving */
 FirebaseData fbdo;
 /* Lcd initialize */
 LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, LCD_COLUMNS, LCD_ROWS);
@@ -126,7 +127,7 @@ void loop() {
             if(analyse_sensor_string(sensor_array, raw_string)){
 
                 /* send sensor data to firebase, return TRUE if sending successed */
-                if(Firebase.setString(fbdo, firebase_sensor_path, raw_string)){
+                if(Firebase.setString(fbdo, FIREBASE_SENSOR_PATH, raw_string)){
 
                     lcd_print_sensor_value(sensor_array);
                 }
@@ -146,7 +147,7 @@ void loop() {
         else if(wait_for(800)){
 
             /* return TRUE if get data successed, and data will be stored in database(fbdo) */
-            if(Firebase.getString(fbdo, firebase_controller_path)){
+            if(Firebase.getString(fbdo, FIREBASE_CONTROL_PATH)){
 
                 String control_data = fbdo.stringData();                           // get data from database
                 /* analyse control_data, return false if data was not available */
@@ -292,39 +293,18 @@ void lcd_setup(){
     lcd.begin();                                                        // setup lcd
     byte water[8] = {
 
-        B00000,
-        B00100,
-        B01110,
-        B11111,
-        B11111,
-        B11111,
-        B01110,
-        B00000
+        0x00, 0x04, 0x0E, 0x1F, 0x1F, 0x1F, 0x1F, 0x0E
     };  lcd.createChar(1, water);
 
     byte temperature[8]= {
 
-        B00011,
-        B00011,
-        B01000,
-        B11111,
-        B01000,
-        B01000,
-        B01001,
-        B00110,
+        0x03, 0x0B, 0x08, 0x1E, 0x08, 0x08, 0x0A, 0x04
     }; lcd.createChar(2, temperature);
 
 
     byte degree[8]= {
 
-        B11000,
-        B11000,
-        B01110,
-        B10001,
-        B10000,
-        B10000,
-        B10001,
-        B01110,
+        0x18, 0x18, 0x06, 0x09, 0x08, 0x08, 0x09, 0x06
     }; lcd.createChar(3, degree);
 
     lcd.backlight();

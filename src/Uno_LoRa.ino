@@ -127,8 +127,19 @@ ISR(TIMER1_COMPA_vect){                                                 // inter
 
 void init_lora(){
 
-    if (!LoRa.begin(BAND)){
-        wait_for(1000)
+    while(true){
+
+        static uint8_t fail_times = 0;
+        delay(200);
+        if (!LoRa.begin(BAND)){
+            fail_times++;
+            if(fail_times == 10){
+                reset_board();
+            }
+        }
+        else{
+            return;
+        }
     }
 }
 
